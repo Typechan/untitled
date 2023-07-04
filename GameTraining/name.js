@@ -1,16 +1,20 @@
 // Game configuration
+var moveLeft = false;
+var moveRight = false;
+var moveUp = false;
+var moveDown = false;
 const GAME_WIDTH = window.innerWidth;
 const GAME_HEIGHT = window.innerHeight;
 const PLAYER_RADIUS = 10;
 const MAX_PLAYER_SPEED = 5;
-const INITIAL_BLOB_COUNT = 30;
+const INITIAL_BLOB_COUNT = 10;
 const INITIAL_ENEMY_COUNT = 3;
 const BLOB_RADIUS_MIN = 5;
 const BLOB_RADIUS_MAX = 15;
 const SPEED_BOOST_FACTOR = 2; // Speed boost factor when clicking the mouse button
 const BOUNCING_BLOB_RADIUS = 20;
 const BOUNCING_BLOB_HITS = 3;
-const GAME_BORDERS=200; //how many points borders are far from (0,0) left right corner
+const GAME_BORDERS=-400; //how many points borders are far from (0,0) left right corner
 let functionCalled = false;
 
 const fullScreen = document.getElementById('fullscreen');
@@ -47,41 +51,12 @@ const player = {
   radius: PLAYER_RADIUS,
   score: 0,
   color: '#FF0000',
-  speed: 0,
+  speed: MAX_PLAYER_SPEED/5,
   isBoosting: false,
-  rotation: 0, // Current rotation angle of the player
-  playerType: 0,
   maxHP: 2,
   currentHP: 2,
   isDead: false,
-  tier: 1,
-  availableUpgrades: [101,102,103,201,202,301]
 };
-
-function triggerAbility() {
-  switch (player.playerType) {
-    case 101:
-      // Default ability code
-      player.color="#FFA500";
-      console.log("Default ability triggered");
-      break;
-    case 102:
-      // Type 1 ability code
-      player.color="#FFA5FF";
-      console.log("Type 1 ability triggered");
-      break;
-    case 103:
-      // Type 2 ability code
-      player.color="#FFFFFF";
-      console.log("Type 2 ability triggered");
-      break;
-    default:
-      // Default case for unknown player types
-      player.color="#000000";
-      console.log("Unknown player type");
-      break;
-  }
-}
 
 // Enemy object
 const enemies = [];
@@ -117,15 +92,20 @@ class Enemy {
 
   update() {
     if (this.isDestroyed) return;
-
+  
     this.x += this.directionX * this.speed;
     this.y += this.directionY * this.speed;
-
+  
     // Check collision with player
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < player.radius + this.radius) {
+    if (
+      this.x + this.radius > player.x - player.radius &&
+      this.x - this.radius < player.x + player.radius &&
+      this.y + this.radius > player.y - player.radius &&
+      this.y - this.radius < player.y + player.radius
+    ) {
       this.bounce();
       this.hits++;
       player.currentHP--;
@@ -133,18 +113,30 @@ class Enemy {
         this.destroy();
       }
     }
-
+  
     // Check collision with boundaries
     if (
-      this.x + this.radius >= GAME_WIDTH ||
-      this.x - this.radius <= -200
+      this.x + this.radius >= player.x - player.radius &&
+      this.x - this.radius <= player.x + player.radius &&
+      this.y + this.radius >= player.y - player.radius &&
+      this.y - this.radius <= player.y + player.radius
     ) {
+      // Bounce back if colliding with player
+      this.bounce();
+    }
+  
+    if (
+      this.x + this.radius >= GAME_WIDTH + GAME_BORDERS ||
+      this.x - this.radius <= -GAME_BORDERS
+    ) {
+      // Reverse horizontal direction if colliding with borders
       this.directionX *= -1;
     }
     if (
-      this.y + this.radius >= GAME_HEIGHT ||
-      this.y - this.radius <= -200
+      this.y + this.radius >= GAME_HEIGHT + GAME_BORDERS / 2 ||
+      this.y - this.radius <= -GAME_BORDERS
     ) {
+      // Reverse vertical direction if colliding with borders
       this.directionY *= -1;
     }
   }
@@ -176,19 +168,11 @@ class Enemy {
   }
 }
 
-function checkScore() {
-  if (player.score >= 10 && !functionCalled) {
-    // Call your function here
-    showUpgradePopup();
 
-    // Set the flag to true to indicate that the function has been called
-    functionCalled = true;
-  }
-}
 
 // Update the player's mass display
 function updateMassDisplay() {
-  massDisplay.textContent = `Mass: ${player.score}`;
+  massDisplay.textContent = `Mass: ${player.currentHP}`;
 }
 
 
@@ -211,31 +195,11 @@ function drawEnemies(enemyList) {
 
 
 
-class EdibleEnemy extends Enemy{
-  constructor(x, y, radius) {
-    super(x, y, radius);
-    this.x = x;
-    this.y = y;
-    this.radius = radius;
-    this.color = "#5DBB63";
-    this.speed = randomRange(1, 3);
-    this.directionX = randomRange(-1, 1);
-    this.directionY = randomRange(-1, 1);
-    this.hits = 0;
-    this.maxHits = 3;
-    this.isDestroyed = false;
-  }
-  
-
-
-}
-
-
 // Generate random new enemies
 function generateEnemies(count, enemyType, enemyList) {
   for (let i = 0; i < count; i++) {
-    const x = randomRange(0, GAME_WIDTH);
-    const y = randomRange(0, GAME_HEIGHT);
+    const x = randomRange(420, GAME_WIDTH+GAME_BORDERS-20);
+    const y = randomRange(420, GAME_HEIGHT+(GAME_BORDERS/2)-20);
     const radius = randomRange(BLOB_RADIUS_MIN, BLOB_RADIUS_MAX);
     enemyList.push(new enemyType(x, y, radius));
   }
@@ -248,38 +212,47 @@ function updatePlayerPosition() {
     speed *= SPEED_BOOST_FACTOR;
   }
 
-  const newX = player.x + player.directionX * speed;
-  const newY = player.y + player.directionY * speed;
+  let directionX = 0;
+  let directionY = 0;
+
+  if (moveLeft) {
+    directionX -= 1;
+  }
+  if (moveRight) {
+    directionX += 1;
+  }
+  if (moveUp) {
+    directionY -= 1;
+  }
+  if (moveDown) {
+    directionY += 1;
+  }
+
+  // Normalize the direction vector
+  const distance = Math.sqrt(directionX * directionX + directionY * directionY);
+  if (distance !== 0) {
+    directionX /= distance;
+    directionY /= distance;
+  }
+
+  const newX = player.x + directionX * speed;
+  const newY = player.y + directionY * speed;
 
   // Check if the new position is within the game boundaries
-  if (newX - player.radius > -GAME_BORDERS && newX + player.radius < GAME_WIDTH) {
+  if (newX - player.radius > -GAME_BORDERS && newX + player.radius < GAME_WIDTH+GAME_BORDERS) {
     player.x = newX;
   }
-  if (newY - player.radius > -GAME_BORDERS && newY + player.radius < GAME_HEIGHT) {
+  if (newY - player.radius > -GAME_BORDERS && newY + player.radius < GAME_HEIGHT+GAME_BORDERS/2) {
     player.y = newY;
   }
+
+  player.directionX = directionX;
+  player.directionY = directionY;
+
   updateMassDisplay();
 }
 
-// Calculate player speed based on distance
-function calculatePlayerSpeed(distance) {
-  const maxDistance = Math.sqrt(GAME_WIDTH * GAME_WIDTH/4 + GAME_HEIGHT * GAME_HEIGHT/4);
-  const normalizedDistance = distance / maxDistance;
 
-  // Define the distance at which the player reaches the maximum speed
-  const maxSpeedDistance = 150; // Adjust this value as desired
-
-  let speed;
-
-  // Use a square function to increase the speed gradually and then reach maximum speed
-  if (distance < maxSpeedDistance) {
-    speed = (normalizedDistance) * MAX_PLAYER_SPEED;
-  } else {
-    speed = MAX_PLAYER_SPEED/5;
-  }
-
-  player.speed = speed;
-}
 
 // Update camera position
 function updateCameraPosition() {
@@ -314,9 +287,6 @@ function drawPlayer() {
 }
 
 // Update player rotation
-function updatePlayerRotation() {
-  player.rotation = Math.atan2(player.directionY, player.directionX);
-}
 
 // Draw grid lines on the canvas
 function drawGrid() {
@@ -338,7 +308,7 @@ function drawBorders() {
   context.beginPath();
   context.lineWidth = 2;
   context.strokeStyle = '#000000';
-  context.rect(-GAME_BORDERS - camera.x, -GAME_BORDERS - camera.y, GAME_WIDTH+GAME_BORDERS, GAME_HEIGHT+GAME_BORDERS);
+  context.rect(-GAME_BORDERS - camera.x, -GAME_BORDERS - camera.y, GAME_WIDTH+GAME_BORDERS*2, GAME_HEIGHT+GAME_BORDERS*1.5);
   context.stroke();
 }
 
@@ -417,26 +387,6 @@ function drawBlobs(){
   )
 }
 
-// Draw bouncing blobs on the canvas
-function drawBouncingBlobs() {
-  for (let i = 0; i < bouncingBlobs.length; i++) {
-    const bouncingBlob = bouncingBlobs[i];
-    context.beginPath();
-    context.arc(
-      bouncingBlob.x - camera.x,
-      bouncingBlob.y - camera.y,
-      bouncingBlob.radius,
-      0,
-      2 * Math.PI,
-      false
-    );
-    context.fillStyle = bouncingBlob.color;
-    context.fill();
-    context.lineWidth = 1;
-    context.strokeStyle = '#000000';
-    context.stroke();
-  }
-}
 
 // Clear the canvas
 function clearCanvas() {
@@ -453,24 +403,14 @@ function randomRange(min, max) {
 // Generate random blobs
 function generateBlobs(count) {
   for (let i = 0; i < count; i++) {
-    const x = randomRange(0, GAME_WIDTH);
-    const y = randomRange(0, GAME_HEIGHT);
+    const x = randomRange(420, GAME_WIDTH+GAME_BORDERS-20);
+    const y = randomRange(420, GAME_HEIGHT+(GAME_BORDERS/2)-20);
     const radius = randomRange(BLOB_RADIUS_MIN, BLOB_RADIUS_MAX);
     const color = '#00FF00';
     blobs.push(new Blob(x, y, radius, color));
   }
 }
 
-// Generate bouncing blobs
-function generateBouncingBlobs(count) {
-  for (let i = 0; i < count; i++) {
-    const x = randomRange(0, GAME_WIDTH);
-    const y = randomRange(0, GAME_HEIGHT);
-    const radius = BOUNCING_BLOB_RADIUS;
-    const color = '#0000FF';
-    bouncingBlobs.push({ x, y, radius, color, hits: BOUNCING_BLOB_HITS });
-  }
-}
 
 // Check collision between player and blobs
 function checkCollision() {
@@ -486,83 +426,8 @@ function checkCollision() {
       
     }
   }
-
-  for (let i = 0; i < bouncingBlobs.length; i++) {
-    const bouncingBlob = bouncingBlobs[i];
-    const dx = player.x - bouncingBlob.x;
-    const dy = player.y - bouncingBlob.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < player.radius + bouncingBlob.radius) {
-      // Bounce off the player
-      bouncingBlob.x += dx / distance * (player.radius + bouncingBlob.radius - distance);
-      bouncingBlob.y += dy / distance * (player.radius + bouncingBlob.radius - distance);
-
-      bouncingBlob.hits--;
-      if (bouncingBlob.hits <= 0) {
-        player.radius += bouncingBlob.radius / 10; // Increase player radius
-        bouncingBlobs.splice(i, 1); // Remove the eaten bouncing blob
-      }
-    }
-  }
 }
 
-// Update bouncing blob positions
-function updateBouncingBlobPositions() {
-  for (let i = 0; i < bouncingBlobs.length; i++) {
-    const bouncingBlob = bouncingBlobs[i];
-    bouncingBlob.x += randomRange(-2, 2);
-    bouncingBlob.y += randomRange(-2, 2);
-
-    // Check if the bouncing blob hits the game boundaries
-    if (
-      bouncingBlob.x - bouncingBlob.radius < -2000 ||
-      bouncingBlob.x + bouncingBlob.radius > GAME_WIDTH
-    ) {
-      bouncingBlob.x -= randomRange(-2, 2);
-    }
-    if (
-      bouncingBlob.y - bouncingBlob.radius < -2000 ||
-      bouncingBlob.y + bouncingBlob.radius > GAME_HEIGHT
-    ) {
-      bouncingBlob.y -= randomRange(-2, 2);
-    }
-  }
-}
-
-function drawScore() {
-  scoreContext.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  scoreContext.fillStyle = '#ffffff';
-  scoreContext.font = '24px Arial';
-  scoreContext.fillText(`Score: ${score}`, 10, 30);
-}
-
-function showUpgradePopup() {
-  upgradeButtons.style.display = "flex"; // Show the 
-  let numBoxes = 0
-  player.availableUpgrades.forEach(function(upgradeCode){
-    if(upgradeCode-player.tier*100>0&&upgradeCode-player.tier*100<100){
-      numBoxes++;
-    }
-  })
-  for (var i = 0; i < numBoxes; i++) {
-    var box = document.createElement("div");
-    box.className = "box";
-    box.textContent = i + 1; // Example: Display box number
-    upgradeButtons.appendChild(box);
-
-    box.addEventListener("click", function() {
-      performUpgrade(box.textContent)
-    });
-  }
-}
-
-function performUpgrade(choice) {
-  player.playerType=player.tier*100+parseInt(choice);
-  player.tier++;
-  upgradeButtons.style.display = "none"; // Hide the upgrade section
-  // Perform the necessary upgrade logic based on the selected choice
-  // ...
-}
 
 function drawMap(){
   drawGrid();
@@ -570,7 +435,7 @@ function drawMap(){
 }
 
 function generateAllEnemies(){
-  generateEnemies(40, Enemy, enemies);
+  generateEnemies(5, Enemy, enemies);
   //generateEnemies(5, EdibleEnemy, edibleEnemies);
 }
 
@@ -584,35 +449,6 @@ function drawAllEnemies(){
   //drawEnemies(edibleEnemies);
 }
 
-function playAnimation(x, y) {
-  const animationImages = [
-    'image1.png',
-    'image2.png',
-    'image3.png',
-    'image4.png',
-    'image5.png',
-    'image6.png',
-    'image7.png',
-
-    // Add more image URLs as needed
-  ];
-
-  let currentImageIndex = 0;
-  const animationInterval = setInterval(() => {
-    const image = new Image();
-    image.src = animationImages[currentImageIndex];
-    image.onload = () => {
-      context.drawImage(image, x, y);
-    };
-
-    currentImageIndex++;
-    if (currentImageIndex >= animationImages.length) {
-      clearInterval(animationInterval);
-    }
-  }, 200); // Adjust the interval duration as needed
-}
-
-
 
 // Game loop
 function gameLoop() {
@@ -624,20 +460,16 @@ function gameLoop() {
   updatePlayerPosition();
   updateAllEnemies();
   updateCameraPosition();
-  updateBouncingBlobPositions();
+
   drawGrid();
   drawBlobs();
-  drawBouncingBlobs();
+
   drawPlayer();
   drawAllEnemies();
   drawBorders();
   checkCollision();
-  checkScore();
   requestAnimationFrame(gameLoop);
 }
-
-const maxDistance = 30; // Maximum distance to stop increasing
-const minDistance = 10; // Minimum distance to turn to zero
 
 // Handle mouse move event
 function handleMouseMove(event) {
@@ -649,8 +481,6 @@ function handleMouseMove(event) {
   let distance = Math.sqrt(dx * dx + dy * dy);
   player.directionX = dx / distance;
   player.directionY = dy / distance;
-  calculatePlayerSpeed(distance);
-  updatePlayerRotation();
 }
 
 // Handle mouse down event
@@ -682,6 +512,32 @@ function handleMouseUp(event) {
   }
 }
 
+
+function handleKeyDown(event) {
+  if (event.keyCode === 37) { // Left arrow key
+    moveLeft = true;
+  } else if (event.keyCode === 39) { // Right arrow key
+    moveRight = true;
+  } else if (event.keyCode === 38) { // Up arrow key
+    moveUp = true;
+  } else if (event.keyCode === 40) { // Down arrow key
+    moveDown = true;
+  }
+}
+
+function handleKeyUp(event) {
+  if (event.keyCode === 37) { // Left arrow key
+    moveLeft = false;
+  } else if (event.keyCode === 39) { // Right arrow key
+    moveRight = false;
+  } else if (event.keyCode === 38) { // Up arrow key
+    moveUp = false;
+  } else if (event.keyCode === 40) { // Down arrow key
+    moveDown = false;
+  }
+}
+document.addEventListener("keydown", handleKeyDown);
+document.addEventListener("keyup", handleKeyUp);
 // Bind mouse move event to the canvas
 canvas.addEventListener('mousemove', handleMouseMove);
 
@@ -694,7 +550,6 @@ canvas.addEventListener('mouseup', handleMouseUp);
 // Generate initial blobs
 generateBlobs(INITIAL_BLOB_COUNT);
 // Generate initial bouncing blobs
-generateBouncingBlobs(10);
 // Generate initial enemies
 generateAllEnemies();
 
